@@ -1,11 +1,25 @@
 var express = require('express');
+
+//body PARSER
 var bodyParser = require('body-parser');
+
+//request.js init
 var request = require('request');
+
+//express app init
 var app = express();
+
+//reddit querying wrapper
 var reddit = require('redditor');
+
+//messenger api token
 var token = "EAADiRtLZBWKoBALEVQnRa0yQJqZBQImAVhydf6ZCTT9zFMhe2wZCkYJjS4nSbBfU8ZAU1bx82iVwtsio82lZBqWlZBSCFYm3fswOapCVAglxnvsU337ZAdhFPxVnsFNVfPJFvxARQlcBaWnuuultyadGoLZAKF5bu3iE7nxZAdMfNB3gZDZD";
+
+//api.ai for getting query 
 var apiAi = require('apiai');
 var apiAiApp = apiAi("de036e0dd0754b34ae0118c481c1896a");
+
+//article parsing for time read and reddit
 var ArticleParser = require('article-parser');
 
 app.set('port', (process.env.PORT || 8080));
@@ -17,12 +31,15 @@ var NEWS_SOURCES = {
     'NEWS': '/r/worldnews.json',
     'WORLD NEWS': '/r/worldnews.json',
     'GAMES': '/r/gamingnews.json',
-    'GAMING': '/r/gamingnews.json'
+    'GAMING': '/r/gamingnews.json',
+    'SCIENCE': '/r/science.json',
+    'BUSINESS': '/r/business.json',
+    'SAD': '/r/offbeat.json',
+    'US POLITICS': '/r/politics.json',
+    'HAPPY': '/r/upliftingnews.json',
+    'EUROPE': '/r/europe.json'
 
 }
-
-
-
 
 app.get('/', function(req, res) {
     res.send('Hello, I am a chatbot!');
@@ -57,35 +74,42 @@ function sendTextMessage(sender, text) {
 }
 
 function sendPreMessage(sender, category) {
-    request({
-        url: 'https://graph.facebook.com/v2.6/me/messages',
-        qs: { access_token: token },
-        method: 'POST',
-        json: {
-            recipient: { id: sender },
-            message: {
-                text: `Finding ${category} articles...`
+    if (category) {
+        request({
+            url: 'https://graph.facebook.com/v2.6/me/messages',
+            qs: { access_token: token },
+            method: 'POST',
+            json: {
+                recipient: { id: sender },
+                message: {
+                    text: `Finding ${category} articles...`
+                }
             }
-        }
-    }, function(error, response, body) {
-        if (error) {
-            console.log('Error sending messages: ', error)
-        } else if (response.body.error) {
-            console.log('Error: ', response.body.error)
-        }
-    })
+        }, function(error, response, body) {
+            if (error) {
+                console.log('Error sending messages: ', error)
+            } else if (response.body.error) {
+                console.log('Error: ', response.body.error)
+            }
+        });
+    }
 }
 
 
 function redditResponse(category) {
+    var selection = Math.floor((Math.random() * 10) + 1);
+    if (category.toUpperCase() in NEWS_SOURCES) {
+        var location = NEWS_SOURCES[category.toUpperCase()];
+        reddit.get(location, function(err, response) {
+            if (err) throw err;
+            console.log(response);
+            parseRedditArtcle(response.data.children[selection]);
+        });
+    } else {
+        console.log('alchemyNews.');
+    }
 
-    var location = NEWS_SOURCES[category];
-    reddit.get(NEWS_SOURCES[category.toUpperCase()], function(err, response) {
-        if (err) throw err;
-        var selection = Math.floor((Math.random() * 10) + 1);
-        var articleNotParsed = response.data.children[selection];
-        parseRedditArtcle(articleNotParsed);
-    });
+    //parseRedditArtcle(articleNotParsed);
 }
 
 function secondsToMinutes(seconds) {
@@ -99,7 +123,6 @@ function buildButton(minutes) {
         return "Read More (" + minutes + " Mins)";
     }
 }
-
 
 function parseRedditArtcle(articleNotParsed) {
     var url = articleNotParsed.data.url;
@@ -145,7 +168,7 @@ app.post('/webhook/', function(req, res) {
             text = event.message.text;
             var textReq = apiAiApp.textRequest(event.message.text);
             textReq.on('response', function(response) {
-                var category = response.result.parameters.topic;
+                var category = (response.result.parameters.topic) ? response.result.parameters.topic : response.result.parameters.keyword;
                 sendPreMessage(sender, category);
                 redditResponse(category);
             });
